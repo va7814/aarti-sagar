@@ -87,9 +87,11 @@ h1 { font-family:'DM Sans',sans-serif; font-size:46px; line-height:1.06; letter-
 .processing { color:var(--saffron-dark); font-size:12px; margin:18px 0 0; }
 .review-fields { display:grid; gap:14px; margin-top:20px; }
 .review-fields label { display:grid; gap:7px; color:var(--ink); font-size:11px; font-weight:700; }
-.review-fields input, .aarti-textarea { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:11px; outline:none; }
-.review-fields input:focus, .aarti-textarea:focus { border-color:var(--saffron); }
+.review-fields input, .review-fields select, .aarti-textarea { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:11px; outline:none; }
+.review-fields input:focus, .review-fields select:focus, .aarti-textarea:focus { border-color:var(--saffron); }
 .aarti-textarea { min-height:190px; resize:vertical; font-size:18px; }
+.review-card { border:1px solid var(--line); border-radius:8px; padding:16px; background:#fffdf9; }
+.review-card > strong { color:var(--saffron-dark); font-size:12px; }
 .review-fields small { color:var(--muted); font-size:11px; font-weight:400; }
 .auth-error { color:#a94b35 !important; }
 .select-row { display:grid; gap:7px; margin-top:19px; }

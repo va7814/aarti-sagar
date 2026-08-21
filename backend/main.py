@@ -15,6 +15,7 @@ from google.genai.errors import ClientError
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import firebase_admin
+import fitz
 from firebase_admin import auth as firebase_auth
 from firebase_admin import firestore
 
@@ -68,6 +69,10 @@ class SubmissionRequest(BaseModel):
 class Submission(SubmissionRequest):
     id: str
     status: str = "In review"
+
+
+MAX_PDF_PAGES = 20
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 def load_catalog() -> list[dict[str, Any]]:
@@ -178,12 +183,9 @@ async def voice_to_text(audio: UploadFile = File(...)) -> dict[str, str]:
     return {"text": (response.text or "").strip()}
 
 
-@app.post("/extract-aarti")
-async def extract_aarti(image: UploadFile = File(...), deity: str = "श्री गणपती", authorization: str | None = Header(default=None)) -> dict[str, str]:
-    verify_token(authorization)
+def extract_aarti_text(image_bytes: bytes, mime_type: str, deity: str) -> dict[str, str]:
     if not _client:
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured")
-    image_bytes = await image.read()
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Image file is empty")
 
@@ -196,7 +198,7 @@ Do not add commentary. If the title is not visible, infer a short title from the
     try:
         response = _client.models.generate_content(
             model=GEMINI_MODEL,
-            contents=[types.Part.from_bytes(data=image_bytes, mime_type=image.content_type or "image/jpeg"), prompt],
+            contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), prompt],
             config=types.GenerateContentConfig(response_mime_type="application/json"),
         )
         extracted = json.loads(response.text or "{}")
@@ -210,6 +212,48 @@ Do not add commentary. If the title is not visible, infer a short title from the
     if not text:
         raise HTTPException(status_code=422, detail="Gemini did not find readable Marathi text in this image")
     return {"title": title or "Untitled aarti", "deity": deity, "text": text, "source": "User contribution"}
+
+
+@app.post("/extract-aarti")
+async def extract_aarti(image: UploadFile = File(...), deity: str = "श्री गणपती", authorization: str | None = Header(default=None)) -> dict[str, str]:
+    verify_token(authorization)
+    image_bytes = await image.read()
+    if len(image_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
+    return extract_aarti_text(image_bytes, image.content_type or "image/jpeg", deity)
+
+
+@app.post("/extract-aarti-pdf", response_model=list[SubmissionRequest])
+async def extract_aarti_pdf(document: UploadFile = File(...), deity: str = "श्री गणपती", authorization: str | None = Header(default=None)) -> list[dict[str, str]]:
+    verify_token(authorization)
+    if document.content_type not in {"application/pdf", "application/x-pdf"} and not (document.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="Upload a PDF document")
+    pdf_bytes = await document.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="PDF is empty")
+    if len(pdf_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="PDF must be 10 MB or smaller")
+    try:
+        pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except (fitz.FileDataError, RuntimeError) as error:
+        raise HTTPException(status_code=422, detail="The uploaded file is not a readable PDF") from error
+    try:
+        if not pdf.page_count:
+            raise HTTPException(status_code=422, detail="PDF has no pages")
+        if pdf.page_count > MAX_PDF_PAGES:
+            raise HTTPException(status_code=422, detail=f"PDF can contain up to {MAX_PDF_PAGES} pages")
+        extracted: list[dict[str, str]] = []
+        for page_number, page in enumerate(pdf, start=1):
+            image_bytes = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False).tobytes("png")
+            try:
+                item = extract_aarti_text(image_bytes, "image/png", deity)
+            except HTTPException as error:
+                raise HTTPException(status_code=422, detail=f"Could not extract aarti from page {page_number}: {error.detail}") from error
+            item["source"] = f"User contribution · PDF page {page_number}"
+            extracted.append(item)
+        return extracted
+    finally:
+        pdf.close()
 
 
 @app.get("/submissions", response_model=list[Submission])
