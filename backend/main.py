@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -19,17 +20,24 @@ from firebase_admin import firestore
 
 load_dotenv(Path(__file__).parent / ".env")
 
+allowed_origins = [
+    origin.strip()
+    for origin in re.split(r"[,;]", os.getenv("WEB_ORIGINS", os.getenv("WEB_ORIGIN", "http://localhost:3000")))
+    if origin.strip()
+]
+
 app = FastAPI(title="Aarati Sagar AI service")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("WEB_ORIGIN", "http://localhost:3000")],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"]) if os.getenv("GEMINI_API_KEY") else None
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
+_client = genai.Client(api_key=gemini_api_key) if gemini_api_key else None
 FIRESTORE_ENABLED = os.getenv("FIRESTORE_ENABLED", "false").lower() == "true"
 if FIRESTORE_ENABLED and not firebase_admin._apps:
     firebase_admin.initialize_app()
@@ -118,14 +126,19 @@ def verify_token(authorization: str | None) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid Firebase login") from error
 
 
+def is_admin_token(token: dict[str, Any]) -> bool:
+    if token.get("admin") is True:
+        return True
+    if not firestore_client:
+        return False
+    profile = firestore_client.collection("users").document(token["uid"]).get()
+    return profile.exists and profile.to_dict().get("role") == "admin"
+
+
 def require_admin(authorization: str | None) -> dict[str, Any]:
     token = verify_token(authorization)
-    if token.get("admin") is True:
+    if is_admin_token(token):
         return token
-    if firestore_client:
-        profile = firestore_client.collection("users").document(token["uid"]).get()
-        if profile.exists and profile.to_dict().get("role") == "admin":
-            return token
     raise HTTPException(status_code=403, detail="Admin role required")
 
 
@@ -201,8 +214,11 @@ Do not add commentary. If the title is not visible, infer a short title from the
 
 @app.get("/submissions", response_model=list[Submission])
 def get_submissions(authorization: str | None = Header(default=None)) -> list[Submission]:
-    verify_token(authorization)
-    return [Submission(**submission) for submission in load_submissions()]
+    token = verify_token(authorization)
+    submissions = load_submissions()
+    if not is_admin_token(token):
+        submissions = [submission for submission in submissions if submission.get("userId") == token["uid"]]
+    return [Submission(**submission) for submission in submissions]
 
 
 @app.post("/submissions", response_model=Submission)

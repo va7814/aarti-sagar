@@ -28,7 +28,7 @@ const aartis: Aarti[] = [
   { title: 'लवथवती विक्राळा', deity: 'श्री शंकर', category: 'शंकर', source: 'संत एकनाथ', text: 'लवथवती विक्राळा ब्रह्मांडी माळा।\nवीषे कंठ काळा त्रिनेत्री ज्वाळा॥', lines: 2 },
   { title: 'घालीन लोटांगण', deity: 'श्री गणपती', category: 'गणपती', source: 'परंपरागत', text: 'घालीन लोटांगण वंदीन चरण।\nडोळ्यांनी पाहिन रूप तुझे॥', lines: 2 },
 ];
-const initialRequests: Request[] = [{ title: 'जय देव जय देव जय मंगलमूर्ती', deity: 'श्री गणपती', submitted: 'आज, १०:३२', status: 'In review' }, { title: 'ओवाळू आरती', deity: 'श्री विठ्ठल', submitted: 'काल, १७:४८', status: 'Approved' }];
+const initialRequests: Request[] = [];
 
 export default function HomePage() {
   const [active, setActive] = useState('library');
@@ -62,11 +62,19 @@ export default function HomePage() {
   useEffect(() => {
     return onAuthStateChanged(auth, async (nextUser) => {
       setUser(nextUser);
-      if (!nextUser) { setRole('user'); setAdminMode(false); return; }
-      const profile = await getDoc(doc(db, 'users', nextUser.uid));
-      const nextRole = profile.data()?.role === 'admin' ? 'admin' : 'user';
+      if (!nextUser) { setRole('user'); setAdminMode(false); setActive('library'); return; }
+      const tokenResult = await nextUser.getIdTokenResult();
+      let profileRole = 'user';
+      try {
+        const profile = await getDoc(doc(db, 'users', nextUser.uid));
+        profileRole = profile.data()?.role || 'user';
+      } catch {
+        // A custom admin claim remains a valid source of authority if the profile read is unavailable.
+      }
+      const nextRole = tokenResult.claims.admin === true || profileRole === 'admin' ? 'admin' : 'user';
       setRole(nextRole);
       setAdminMode(nextRole === 'admin');
+      setActive(nextRole === 'admin' ? 'admin' : 'library');
     });
   }, []);
 
@@ -81,9 +89,10 @@ export default function HomePage() {
       fetch(`${pythonApiUrl}/deities`).then((response) => response.ok ? response.json() : []),
     ]).then(([catalogResults, submissionResults, deityResults]) => {
       setCatalog((catalogResults as Array<{ title: string; deity: string; source?: string; text: string }>).map((result) => ({ title: result.title, deity: result.deity, category: result.deity.replace('श्री ', ''), source: result.source || 'Catalog', text: result.text, lines: result.text.split('\n').length })));
+      setRequests((submissionResults as Array<Omit<Request, 'submitted'>>).map((submission) => ({ ...submission, submitted: 'Submitted' })));
       setDeityOptions(deityResults as string[]);
     }).catch(() => undefined);
-  }, [user]);
+  }, [user, role]);
 
   const showLocalResults = (searchQuery: string) => {
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase('mr-IN');
@@ -166,7 +175,7 @@ export default function HomePage() {
     const response = await fetch(`${pythonApiUrl}/submissions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(draftAarti) });
     if (!response.ok) return;
     const submission = await response.json() as { id: string; title: string; deity: string; text: string; source: string; status: 'In review' | 'Approved' };
-    setRequests([{ ...submission, submitted: 'Just now' }, ...requests]); setFileName(''); setDraftAarti(null); setShowUpload(false); setActive('requests');
+    setRequests((currentRequests) => [{ ...submission, submitted: 'Just now' }, ...currentRequests]); setFileName(''); setDraftAarti(null); setShowUpload(false); setActive('requests');
   };
   const authenticate = async () => {
     setAuthError('');
@@ -184,8 +193,8 @@ export default function HomePage() {
     const response = await fetch(`${pythonApiUrl}/submissions/${request.id}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) return;
     const approved = await response.json() as { title: string; deity: string; text: string; source: string; status: 'Approved' };
-    setRequests(requests.map((item) => item.id === request.id ? { ...item, status: 'Approved' } : item));
-    setCatalog([...catalog, { title: approved.title, deity: approved.deity, category: approved.deity.replace('श्री ', ''), source: approved.source, text: approved.text, lines: approved.text.split('\n').length }]);
+    setRequests((currentRequests) => currentRequests.map((item) => item.id === request.id ? { ...item, status: 'Approved' } : item));
+    setCatalog((currentCatalog) => [...currentCatalog, { title: approved.title, deity: approved.deity, category: approved.deity.replace('श्री ', ''), source: approved.source, text: approved.text, lines: approved.text.split('\n').length }]);
   };
 
   return <div className="app-shell">
@@ -201,9 +210,9 @@ export default function HomePage() {
       <div className="side-bottom"><strong>Preserve a prayer</strong>Upload a handwritten or printed aarti for the next generation.</div>
     </aside>
     <main className="main">
-      <header className="topbar"><button className="admin-link" onClick={() => { if (role === 'admin') { setAdminMode(!adminMode); setActive(adminMode ? 'library' : 'admin'); } else setShowAuth(true); }}> {role === 'admin' && adminMode ? 'Exit admin view' : role === 'admin' ? 'Admin review' : 'Admin sign in'} </button><button className="submit" onClick={() => user ? setShowUpload(true) : setShowAuth(true)}><Plus size={14} /> Contribute to aarti sagar</button><div className="user-pill"><span className="avatar">{user ? 'U' : 'G'}</span> {user ? user.email : 'Guest'} {user && <button className="sign-out" onClick={() => void signOut(auth)}>Sign out</button>} {!user && <CircleUserRound size={14} color="#aaa095" />}</div></header>
+      <header className="topbar"><button className="admin-link" onClick={() => { if (role === 'admin') { setAdminMode(!adminMode); setActive(adminMode ? 'library' : 'admin'); } else setShowAuth(true); }}> {role === 'admin' && adminMode ? 'Exit admin view' : role === 'admin' ? 'Admin review' : 'Sign in'} </button><button className="submit" onClick={() => user ? setShowUpload(true) : setShowAuth(true)}><Plus size={14} /> Contribute to aarti sagar</button><div className="user-pill"><span className="avatar">{user ? 'U' : 'G'}</span> {user ? user.email : 'Guest'} {user && <button className="sign-out" onClick={() => void signOut(auth)}>Sign out</button>} {!user && <CircleUserRound size={14} color="#aaa095" />}</div></header>
       <div className="content">
-        {active === 'admin' ? <AdminView requests={requests} onApprove={approveRequest} /> : active === 'requests' ? <RequestsView requests={requests} /> : <>
+        {active === 'admin' && role === 'admin' ? <AdminView requests={requests} onApprove={approveRequest} /> : active === 'requests' ? <RequestsView requests={requests} /> : <>
           <p className="subtitle">Search, read, and preserve Marathi aartis in one living library.</p>
           <div className="search-wrap"><div className="search-box"><Search size={18} color="#aaa095" /><input value={query} onChange={(e) => { setQuery(e.target.value); setAiResults(null); }} onKeyDown={(e) => { if (e.key === 'Enter') void runSearch(); }} placeholder="Search by aarti or deity..." /><button aria-label="Search by voice" className={`voice-btn ${listening ? 'listening' : ''}`} onClick={startVoice}><Mic size={17} /></button><button className="search-btn" onClick={() => void runSearch()}>Search</button></div><div className="quick-row">Popular <button onClick={() => { setQuery('गणपती'); void runSearch('गणपती'); }}>Ganapati</button><button onClick={() => { setQuery('देवी'); void runSearch('देवी'); }}>Devi</button><button onClick={() => { setQuery('विठ्ठल'); void runSearch('विठ्ठल'); }}>Vitthal</button>{voiceError && <span className="voice-error">{voiceError}</span>}</div></div>
           <div className="library-grid"><section><div className="section-heading"><h2>{query ? 'Search results' : 'Recently added'}</h2><span className="count">{filtered.length} aartis</span></div><div className="aarti-list">{filtered.length ? filtered.map((aarti) => <AartiCard key={aarti.title} aarti={aarti} onRead={setSelectedAarti} />) : <div className="empty">No aarti found for this search.</div>}</div></section><aside className="right-rail"><div className="ad-list">{advertisements.right.map((advertisement) => <Advertisement key={advertisement} name={advertisement} />)}</div></aside></div>
@@ -224,4 +233,4 @@ function Advertisement({ name }: { name: string }) {
   return <div className="ad-slot"><img src={`/advertisements/${name}.${format}`} alt="Advertisement" onError={() => format === 'png' ? setFormat('jpg') : setVisible(false)} /></div>;
 }
 function RequestsView({ requests }: { requests: Request[] }) { return <><div className="eyebrow"><span /> YOUR CONTRIBUTIONS</div><h1>My requests</h1><p className="subtitle">Track the review status of your submitted aartis.</p><section className="requests"><div className="section-heading"><h2>Submitted aartis</h2><span className="count">{requests.length} requests</span></div>{requests.map((request) => <div className="request-row" key={`${request.title}-${request.submitted}`}><div><strong className="devanagari">{request.title}</strong><small className="devanagari">{request.deity} · {request.submitted}</small></div><span className="status">{request.status}</span><FileImage size={16} color="#aaa095" /></div>)}</section></>; }
-function AdminView({ requests, onApprove }: { requests: Request[]; onApprove: (request: Request) => void }) { return <><div className="eyebrow"><span /> MODERATION</div><h1>Review submissions</h1><p className="subtitle">Approve new aartis before adding them to the public library.</p><section className="requests"><div className="section-heading"><h2>Pending submissions</h2><span className="count">{requests.filter((r) => r.status === 'In review').length} pending</span></div>{requests.map((request) => <div className="request-row" key={`${request.id || request.title}-admin`}><div><strong className="devanagari">{request.title}</strong><small className="devanagari">{request.deity} · {request.submitted}</small></div>{request.status === 'In review' ? <button className="status" onClick={() => void onApprove(request)}><Check size={12} /> Approve</button> : <span className="status" style={{ color:'#49735b', background:'#e9f1e7' }}>Approved</span>}<FileImage size={16} color="#aaa095" /></div>)}</section></>; }
+function AdminView({ requests, onApprove }: { requests: Request[]; onApprove: (request: Request) => void }) { return <><div className="eyebrow"><span /> MODERATION</div><h1>Review submissions</h1><p className="subtitle">Approve new aartis before adding them to the public library.</p><section className="requests"><div className="section-heading"><h2>All submissions</h2><span className="count">{requests.filter((r) => r.status === 'In review').length} pending</span></div>{requests.map((request) => <div className="request-row" key={`${request.id || request.title}-admin`}><div><strong className="devanagari">{request.title}</strong><small className="devanagari">{request.deity} · {request.submitted}</small></div>{request.status === 'In review' ? <button className="status" onClick={() => void onApprove(request)}><Check size={12} /> Approve</button> : <span className="status" style={{ color:'#49735b', background:'#e9f1e7' }}>Approved</span>}<FileImage size={16} color="#aaa095" /></div>)}</section></>; }
