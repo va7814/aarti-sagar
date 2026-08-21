@@ -28,7 +28,7 @@ For the local AI service, copy `backend/.env.example` to `backend/.env`, add `GE
 Recommended production topology:
 
 1. Deploy `backend/` as a Cloud Run service. Set `FIRESTORE_ENABLED=true`, `GEMINI_API_KEY`, and `WEB_ORIGIN` in Cloud Run environment variables. Cloud Run's service account supplies Firebase Admin credentials through Application Default Credentials.
-2. Deploy the Next.js app with Firebase App Hosting using `apphosting.yaml`. Set all `NEXT_PUBLIC_FIREBASE_*` variables and `NEXT_PUBLIC_PYTHON_API_URL` in App Hosting environment settings.
+2. Deploy the Next.js app with Firebase App Hosting using `apphosting.yaml`. Set all `NEXT_PUBLIC_FIREBASE_*` variables and `NEXT_PUBLIC_PYTHON_API_URL` in App Hosting environment settings. Do not commit placeholder production URLs.
 3. Enable Email/Password authentication in Firebase Authentication.
 4. Deploy `firestore.rules` and `storage.rules` with the Firebase CLI.
 5. Create the first user account, then run `backend/create_admin.py` with that user's Firebase UID to assign `role: "admin"`. Never allow the browser to assign its own admin role.
@@ -39,7 +39,7 @@ Useful commands:
 firebase login
 firebase use YOUR_FIREBASE_PROJECT_ID
 firebase deploy --only firestore:rules,storage
-gcloud builds submit backend --tag gcr.io/YOUR_FIREBASE_PROJECT_ID/aarati-api
+gcloud builds submit . --tag asia-south1-docker.pkg.dev/YOUR_FIREBASE_PROJECT_ID/aarati-repo/aarati-api
 gcloud run deploy aarati-api --image gcr.io/YOUR_FIREBASE_PROJECT_ID/aarati-api --region YOUR_REGION --allow-unauthenticated
 ```
 

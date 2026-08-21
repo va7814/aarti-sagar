@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.venv
+backend/.env
+.env.local
+public/advertisements
+data/submissions.json
+*.json
+!data/aartis.json
+!data/deities.json

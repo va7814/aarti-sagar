@@ -5,8 +5,33 @@ runConfig:
 
 # Configure NEXT_PUBLIC_* values in Firebase App Hosting environment settings.
 env:
-  - variable: NEXT_PUBLIC_PYTHON_API_URL
-    value: https://YOUR_FASTAPI_CLOUD_RUN_URL
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyDMbGRP9DucapXC-PpAWY7vpnYyjmnwKsw
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: aarti-sagar.firebaseapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: aarti-sagar
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: aarti-sagar.firebasestorage.app
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "392118341291"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:392118341291:web:1a50f0327c98833dab71ee"
     availability:
       - BUILD
       - RUNTIME
