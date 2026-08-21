@@ -50,6 +50,7 @@ export default function HomePage() {
   const [adminMode, setAdminMode] = useState(false);
   const [selectedAarti, setSelectedAarti] = useState<Aarti | null>(null);
   const [voiceError, setVoiceError] = useState('');
+  const [extractionError, setExtractionError] = useState('');
   const [aiResults, setAiResults] = useState<Aarti[] | null>(null);
   const [deityOptions, setDeityOptions] = useState<string[]>([]);
   const [advertisements, setAdvertisements] = useState({ left: [] as string[], right: [] as string[] });
@@ -144,14 +145,19 @@ export default function HomePage() {
     }).catch(() => setListening(false));
   };
   const extractAarti = async (file: File) => {
-    setFileName(file.name); setDraftAarti(null); setExtracting(true);
+    setFileName(file.name); setDraftAarti(null); setExtractionError(''); setExtracting(true);
     const formData = new FormData(); formData.append('image', file); formData.append('deity', selectedDeity);
     try {
       const token = user ? await user.getIdToken() : '';
       const response = await fetch(`${pythonApiUrl}/extract-aarti`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData });
-      if (!response.ok) throw new Error('Extraction failed');
-      setDraftAarti(await response.json() as DraftAarti);
-    } catch { setVoiceError('Could not convert this image to text. Please try another image.'); }
+      const responseBody = await response.text();
+      if (!response.ok) {
+        let detail = 'Image extraction failed.';
+        try { detail = (JSON.parse(responseBody) as { detail?: string }).detail || detail; } catch { /* Keep the readable fallback. */ }
+        throw new Error(detail);
+      }
+      setDraftAarti(JSON.parse(responseBody) as DraftAarti);
+    } catch (error) { setExtractionError(error instanceof Error ? error.message : 'Could not convert this image to text.'); }
     finally { setExtracting(false); }
   };
   const submitRequest = async () => {
@@ -206,7 +212,7 @@ export default function HomePage() {
     </main>
     {selectedAarti && <div className="modal-backdrop"><div className="modal reader-modal"><div className="modal-top"><div><h2>Read aarti</h2><p className="modal-sub"><span className="devanagari">{selectedAarti.deity}</span> · {selectedAarti.source}</p></div><button className="close" onClick={() => setSelectedAarti(null)} aria-label="Close reader"><X size={18} /></button></div><div className="reader-text devanagari">{selectedAarti.text}</div><div className="submit-row"><button className="cancel" onClick={() => setSelectedAarti(null)}>Close</button></div></div></div>}
     {showAuth && <div className="modal-backdrop"><div className="modal"><div className="modal-top"><div><h2>{authMode === 'login' ? 'Sign in' : 'Create account'}</h2><p className="modal-sub">Use an account to contribute aarti scans and track submissions.</p></div><button className="close" onClick={() => setShowAuth(false)} aria-label="Close"><X size={18} /></button></div><div className="review-fields"><label>Email<input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} /></label><label>Password<input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} /></label>{authError && <small className="auth-error">{authError}</small>}</div><div className="submit-row"><button className="cancel" onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}>{authMode === 'login' ? 'Create account' : 'Have an account?'}</button><button className="submit" onClick={() => void authenticate()}>{authMode === 'login' ? 'Sign in' : 'Create account'}</button></div></div></div>}
-    {showUpload && <div className="modal-backdrop"><div className="modal contribution-modal"><div className="modal-top"><div><h2>Contribute an aarti</h2><p className="modal-sub">Upload an image, review the extracted Marathi text, then send it for review.</p></div><button className="close" onClick={() => setShowUpload(false)} aria-label="Close"><X size={18} /></button></div><div className="upload-step"><label className="dropzone"><Upload size={24} /><p>{fileName || 'Drop an image here or choose one'}</p><small>JPG or PNG · maximum 10 MB</small><input className="file-input" type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) void extractAarti(file); }} /></label><div className="select-row"><label>Which deity is this for?</label><select value={selectedDeity} onChange={(e) => { setSelectedDeity(e.target.value); setDraftAarti((draft) => draft ? { ...draft, deity: e.target.value } : draft); }}>{deities.map((deity) => <option key={deity}>{deity}</option>)}</select></div></div>{extracting && <p className="processing">Converting image to Marathi text...</p>}{draftAarti && <div className="review-fields"><label>Title<input value={draftAarti.title} onChange={(e) => setDraftAarti({ ...draftAarti, title: e.target.value })} /></label><label>Extracted aarti text<textarea className="aarti-textarea devanagari" value={draftAarti.text} onChange={(e) => setDraftAarti({ ...draftAarti, text: e.target.value })} /></label><small>Source: User contribution</small></div>}<div className="submit-row"><button className="cancel" onClick={() => setShowUpload(false)}>Cancel</button><button className="submit" disabled={!draftAarti || extracting} onClick={() => void submitRequest()}>Send for review</button></div></div></div>}
+    {showUpload && <div className="modal-backdrop"><div className="modal contribution-modal"><div className="modal-top"><div><h2>Contribute an aarti</h2><p className="modal-sub">Upload an image, review the extracted Marathi text, then send it for review.</p></div><button className="close" onClick={() => setShowUpload(false)} aria-label="Close"><X size={18} /></button></div><div className="upload-step"><label className="dropzone"><Upload size={24} /><p>{fileName || 'Drop an image here or choose one'}</p><small>JPG or PNG · maximum 10 MB</small><input className="file-input" type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) void extractAarti(file); }} /></label><div className="select-row"><label>Which deity is this for?</label><select value={selectedDeity} onChange={(e) => { setSelectedDeity(e.target.value); setDraftAarti((draft) => draft ? { ...draft, deity: e.target.value } : draft); }}>{deities.map((deity) => <option key={deity}>{deity}</option>)}</select></div></div>{extracting && <p className="processing">Converting image to Marathi text...</p>}{extractionError && <p className="auth-error">{extractionError}</p>}{draftAarti && <div className="review-fields"><label>Title<input value={draftAarti.title} onChange={(e) => setDraftAarti({ ...draftAarti, title: e.target.value })} /></label><label>Extracted aarti text<textarea className="aarti-textarea devanagari" value={draftAarti.text} onChange={(e) => setDraftAarti({ ...draftAarti, text: e.target.value })} /></label><small>Source: User contribution</small></div>}<div className="submit-row"><button className="cancel" onClick={() => setShowUpload(false)}>Cancel</button><button className="submit" disabled={!draftAarti || extracting} onClick={() => void submitRequest()}>Send for review</button></div></div></div>}
   </div>;
 }
 

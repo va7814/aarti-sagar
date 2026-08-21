@@ -189,8 +189,14 @@ Do not add commentary. If the title is not visible, infer a short title from the
         extracted = json.loads(response.text or "{}")
     except (ClientError, json.JSONDecodeError) as error:
         raise HTTPException(status_code=502, detail=f"Aarti text extraction failed: {error}") from error
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Aarti text extraction service error: {error}") from error
 
-    return {"title": str(extracted.get("title", "Untitled aarti")), "deity": deity, "text": str(extracted.get("text", "")), "source": "User contribution"}
+    title = str(extracted.get("title", "Untitled aarti")).strip()
+    text = str(extracted.get("text", "")).strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Gemini did not find readable Marathi text in this image")
+    return {"title": title or "Untitled aarti", "deity": deity, "text": text, "source": "User contribution"}
 
 
 @app.get("/submissions", response_model=list[Submission])
