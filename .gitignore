@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+backend/.env
+aarti-sagar-firebase-adminsdk-fbsvc-e0ee86f8ca.json

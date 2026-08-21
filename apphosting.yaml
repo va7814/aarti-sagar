@@ -1,0 +1,12 @@
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 80
+
+# Configure NEXT_PUBLIC_* values in Firebase App Hosting environment settings.
+env:
+  - variable: NEXT_PUBLIC_PYTHON_API_URL
+    value: https://YOUR_FASTAPI_CLOUD_RUN_URL
+    availability:
+      - BUILD
+      - RUNTIME
