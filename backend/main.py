@@ -71,7 +71,7 @@ class Submission(SubmissionRequest):
     status: str = "In review"
 
 
-MAX_PDF_PAGES = 20
+MAX_PDF_PAGES = 100
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
